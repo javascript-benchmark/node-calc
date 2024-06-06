@@ -1,0 +1,136 @@
+#official image
+image: $CI_REGISTRY/cloudfoundation/servicecontainers/xenial-awscli-jdk8-node12
+
+cache:
+  paths:
+    - node_modules/
+
+stages:
+    - build
+    - test
+    - archive
+    - scan 
+   
+#Build stage - just does an npm install   
+build:code:
+  stage: build
+  script:
+    - npm install
+  tags:
+    - linux
+    - docker
+    
+# Run snyk only when your dependencies change and on a schedule
+#test:vulnerabilities:
+#  stage: test
+#  only:
+#    refs:
+#      - schedules
+#    changes:
+#      - package.json
+#  script:
+#    - npm install
+#    - export SNYK_TOKEN=$SNYK_TOKEN
+#    - npm install -g snyk    
+#    - chmod u+x /usr/bin/snyk 2> /dev/null
+#    - /usr/bin/snyk monitor --org=appservices
+#    - snyk test --severity-threshold=high
+#  tags:
+#    - linux
+#    - docker
+
+test:vulnerabilities:
+  stage: test
+  only:
+    refs:
+      - schedules
+    changes:
+      - package.json
+  before_script:
+        - wget -q -O /usr/bin/mend https://downloads.mend.io/cli/linux_amd64/mend
+  script:
+    - npm install
+    - export SNYK_TOKEN=$SNYK_TOKEN    
+    - chmod +x /usr/local/bin/mend 2> /dev/null
+    - /usr/bin/mend scan -s "*//XO Pillar 1//node-calc"    
+  tags:
+    - linux
+    - docker
+
+# Zip the archieve  
+package:
+    stage: archive
+    only:
+        - schedules
+    script:
+        - git archive -o nodecalc.zip HEAD
+        - ls -l
+    tags:
+      - linux
+      - docker
+    artifacts:
+        paths:
+            - nodecalc.zip
+
+#download the java wrappers for veracode, and upload the entire source code to the Veracode server
+#   DO NOT CHANGE -appname AppServices PARAMETER, as this will incurr additional costs if changed        
+veracode-policy-scan:
+    stage: scan    
+    only:
+        - schedules        
+    before_script:
+        - wget -q -O veracode-wrapper.jar https://repo1.maven.org/maven2/com/veracode/vosp/api/wrappers/vosp-api-wrappers-java/${VERACODE_WRAPPER_VERSION}/vosp-api-wrappers-java-${VERACODE_WRAPPER_VERSION}.jar    
+    script:
+        - java -jar veracode-wrapper.jar -vid ${TEAM_ANALYSISCENTER_ID} -vkey ${TEAM_ANALYSISCENTER_KEY} -action UploadAndScan -appname AppServices -sandboxname ${SANDBOX_NAME} -createprofile false -autoscan true -filepath nodecalc.zip -version "Static scan - node-calc - $(date +%d-%m-%Y)"
+    tags:
+      - linux
+      - docker
+
+test:scan:
+  stage: test
+  variables:
+    MEND_EMAIL: ${MEND_EMAIL}
+    MEND_USER_KEY: ${MEND_USER_KEY}
+    MEND_URL: https://saas-eu.mend.io/
+  before_script:
+    - wget -q -O /usr/bin/mend https://downloads.mend.io/cli/linux_amd64/mend  
+  script:
+    - npm install    
+    - chmod u+x /usr/bin/mend 2> /dev/null
+    - /usr/bin/mend dep -s "*//XO Pillar 1//node-calc" -u
+  tags:
+    - linux
+    - docker
+
+test:code:
+  stage: test
+  variables:
+    MEND_EMAIL: ${MEND_EMAIL}
+    MEND_USER_KEY: ${MEND_USER_KEY}
+    MEND_URL: https://saas-eu.mend.io/
+  before_script:
+    - wget -q -O /usr/bin/mend https://downloads.mend.io/cli/linux_amd64/mend  
+  script:
+    # - npm install    
+    - chmod u+x /usr/bin/mend 2> /dev/null
+    - /usr/bin/mend code -s "XO Pillar 1//node-calc"
+  tags:
+    - linux
+    - docker
+
+test:container-scan:
+  stage: test
+  variables:
+    MEND_EMAIL: ${MEND_EMAIL}
+    MEND_USER_KEY: ${MEND_USER_KEY}
+    MEND_URL: https://saas-eu.mend.io/
+  before_script:
+    - wget -q -O /usr/bin/mend https://downloads.mend.io/cli/linux_amd64/mend  
+  script:
+    # - npm install    
+    - chmod u+x /usr/bin/mend 2> /dev/null    
+    - /usr/bin/mend image node:lts-alpine3.19 -s "*//XO Pillar 1//node-calc" 
+  tags:
+    - linux
+    - docker
+
