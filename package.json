@@ -23,7 +23,7 @@
   "author": "Edward Thomson <ethomson@microsoft.com>",
   "license": "MIT",
   "dependencies": {
-    "acorn": "6.3.0",
+    "acorn": "6.4.2",
     "ansi-regex": "2.1.1",
     "express": "2.5.11"
   },
